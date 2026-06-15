@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GGI Bus GPS Tracker</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .header h1 {
+            color: #1e3a8a;
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .bus-id-section {
+            margin-bottom: 24px;
+        }
+
+        .bus-id-section label {
+            display: block;
+            color: #334155;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .bus-id-section input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .bus-id-section input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .status-card {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #94a3b8;
+            transition: background-color 0.3s;
+        }
+
+        .status-dot.active {
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.5;
+                transform: scale(1.2);
+            }
+        }
+
+        .status-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .data-item {
+            background: white;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .data-item label {
+            display: block;
+            color: #94a3b8;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .data-item .value {
+            color: #1e293b;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        #startBtn:hover {
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        #stopBtn {
+            background: #ef4444;
+            color: white;
+            display: none;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+
+        #stopBtn:hover {
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
+        }
+
+        .log-section {
+            margin-top: 24px;
+        }
+
+        .log-section h3 {
+            color: #334155;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .log-list {
+            background: #0f172a;
+            color: #22c55e;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 16px;
+            border-radius: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-list p {
+            margin: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚌 GGI Bus GPS</h1>
+            <p>Track your bus location in real time</p>
+        </div>
+
+        <div class="bus-id-section">
+            <label for="busId">Bus ID</label>
+            <input type="text" id="busId" value="GGI-02" placeholder="Enter your Bus ID">
+        </div>
+
+        <div class="status-card">
+            <div class="status-header">
+                <div class="status-dot" id="statusDot"></div>
+                <div class="status-text" id="statusText">Ready to start tracking</div>
+            </div>
+
+            <div class="data-grid">
+                <div class="data-item">
+                    <label>Latitude</label>
+                    <div class="value" id="latValue">—</div>
+                </div>
+                <div class="data-item">
+                    <label>Longitude</label>
+                    <div class="value" id="lngValue">—</div>
+                </div>
+                <div class="data-item">
+                    <label>Speed</label>
+                    <div class="value" id="speedValue">—</div>
+                </div>
+                <div class="data-item">
+                    <label>Last Sent</label>
+                    <div class="value" id="lastSent">—</div>
+                </div>
+            </div>
+        </div>
+
+        <button id="startBtn" onclick="startTracking()">
+            Start Tracking
+        </button>
+        <button id="stopBtn" onclick="stopTracking()">
+            Stop Tracking
+        </button>
+
+        <div class="log-section">
+            <h3>Log</h3>
+            <div class="log-list" id="logList"></div>
+        </div>
+    </div>
+
+    <script>
+        let watchId = null;
+        let lastSentAt = 0;
+        const WEBHOOK_URL = "https://sanju314s.app.n8n.cloud/webhook-test/bus-location";
+
+        function log(message) {
+            const time = new Date().toLocaleTimeString();
+            const logList = document.getElementById('logList');
+            const p = document.createElement('p');
+            p.textContent = `[${time}] ${message}`;
+            logList.prepend(p);
+        }
+
+        function updateStatus(status) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+
+            if (status === 'tracking') {
+                statusDot.classList.add('active');
+                statusText.textContent = 'Tracking Active';
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'block';
+            } else {
+                statusDot.classList.remove('active');
+                statusText.textContent = 'Tracking Stopped';
+                startBtn.style.display = 'block';
+                stopBtn.style.display = 'none';
+            }
+        }
+
+        function updateDisplay(data) {
+            document.getElementById('latValue').textContent = data.latitude.toFixed(6);
+            document.getElementById('lngValue').textContent = data.longitude.toFixed(6);
+            document.getElementById('speedValue').textContent = data.speed ? `${(data.speed * 3.6).toFixed(1)} km/h` : '0 km/h';
+            document.getElementById('lastSent').textContent = new Date().toLocaleTimeString();
+        }
+
+        async function sendLocation(data) {
+            try {
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    log(`Location sent successfully`);
+                } else {
+                    log(`Error: ${response.status} ${response.statusText}`);
+                }
+            } catch (err) {
+                log(`Error sending location: ${err.message}`);
+            }
+        }
+
+        function startTracking() {
+            const busId = document.getElementById('busId').value.trim();
+            if (!busId) {
+                alert('Please enter a Bus ID');
+                return;
+            }
+
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by this browser');
+                return;
+            }
+
+            log('Starting tracking...');
+            updateStatus('tracking');
+
+            watchId = navigator.geolocation.watchPosition(
+                async (position) => {
+                    const now = Date.now();
+                    const throttleMs = 5000;
+                    if (now - lastSentAt < throttleMs) return;
+
+                    const data = {
+                        bus_id: busId,
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        speed: position.coords.speed,
+                        timestamp: new Date().toISOString()
+                    };
+
+                    updateDisplay(data);
+                    log(`GPS Update: ${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)}`);
+                    
+                    await sendLocation(data);
+                    lastSentAt = Date.now();
+                },
+                (err) => {
+                    log(`GPS Error: ${err.message}`);
+                    console.error(err);
+                },
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 10000,
+                    timeout: 5000
+                }
+            );
+        }
+
+        function stopTracking() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            log('Tracking stopped');
+            updateStatus('idle');
+        }
+    </script>
+</body>
+</html>
