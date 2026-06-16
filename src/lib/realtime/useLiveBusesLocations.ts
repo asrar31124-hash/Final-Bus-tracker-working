@@ -12,7 +12,9 @@ export function useLiveBusesLocations() {
   const channelsRef = useRef<{ buses?: RealtimeChannel; locations?: RealtimeChannel }>({})
 
   useEffect(() => {
-    supabase.realtime.setAuth()
+    if (supabase) {
+      supabase.realtime.setAuth()
+    }
   }, [])
 
   const subscribeTopics = useMemo(() => {
@@ -23,6 +25,8 @@ export function useLiveBusesLocations() {
   }, [])
 
   useEffect(() => {
+    if (!supabase) return;
+
     const onTopic = async (topic: 'buses' | 'locations', setFn: (p: RealtimeBroadcastPayload[]) => void) => {
       const channel = supabase.channel(topic, { config: { private: true } })
       channel

@@ -21,7 +21,7 @@ function DriverPage() {
 
   // Send location updates to Supabase when tracking is active
   useEffect(() => {
-    if (!tracking || !geolocation.latitude || !geolocation.longitude) return;
+    if (!tracking || !geolocation.latitude || !geolocation.longitude || !supabase) return;
 
     const sendUpdate = async () => {
       const now = Date.now();
@@ -29,7 +29,7 @@ function DriverPage() {
 
       try {
         // Example: Insert into a locations table (adjust to your actual table schema!)
-        await supabase.from("locations").insert({
+        await supabase?.from("locations").insert({
           bus_id: "GGI-02", // Update to your actual bus ID
           latitude: geolocation.latitude,
           longitude: geolocation.longitude,

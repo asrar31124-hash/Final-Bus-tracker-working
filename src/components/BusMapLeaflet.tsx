@@ -1,9 +1,12 @@
-import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker } from "react-leaflet";
+import { getRoute, type RoutePoint } from "@/lib/graphhopper";
+
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { buses, CAMPUS, type Bus } from "@/lib/bus-data";
 import { useLiveBusesLocations } from "@/lib/realtime/useLiveBusesLocations";
 import { useMemo, useEffect, useState } from "react";
+// Removed duplicate import of RoutePoint
+import { useMap, MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, Polyline } from "react-leaflet";
 
 const statusColor: Record<Bus["status"], string> = {
   active: "#10B981",
@@ -11,6 +14,29 @@ const statusColor: Record<Bus["status"], string> = {
   issue: "#D90429",
   offline: "#6B7280",
 };
+
+// Auto-center updater for React Leaflet
+function MapUpdater({
+  center,
+  zoom,
+  gpsActive,
+  followUser,
+}: {
+  center: [number, number] | null;
+  zoom?: number;
+  gpsActive?: boolean;
+  followUser?: boolean;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (center && gpsActive && followUser) {
+      map.setView(center, zoom ?? map.getZoom());
+    }
+  }, [center, zoom, map, gpsActive, followUser]);
+
+  return null;
+}
 
 function makeBusIcon(color: string, selected: boolean) {
   const size = selected ? 44 : 38;
@@ -27,6 +53,21 @@ function makeBusIcon(color: string, selected: boolean) {
         <div style="position:relative;width:100%;height:100%;border-radius:9999px;background:${color};border:2px solid #fff;box-shadow:0 6px 18px -4px rgba(0,0,0,.35);display:grid;place-items:center;${selected ? "outline:4px solid rgba(255,255,255,.7);outline-offset:-2px;" : ""}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg>
         </div>
+      </div>
+    `,
+  });
+}
+
+// Google Maps style blue dot icon for user GPS location
+function makeUserIcon() {
+  return L.divIcon({
+    className: "",
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    html: `
+      <div style="position:relative;width:24px;height:24px;display:grid;place-items:center;pointer-events:none;">
+        <span style="position:absolute;inset:-8px;border-radius:9999px;background:#3B82F6;opacity:.35;animation:pulse-ring 1.8s cubic-bezier(.2,.7,.4,1) infinite"></span>
+        <div style="position:relative;width:16px;height:16px;border-radius:9999px;background:#3B82F6;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45);"></div>
       </div>
     `,
   });
@@ -53,10 +94,18 @@ export function BusMapLeaflet({
   selectedId,
   onSelect,
   tick,
+  routePoints,
+  userLocation,
+  gpsActive,
+  followUser,
 }: {
   selectedId?: string;
   onSelect?: (id: string) => void;
   tick: number;
+  routePoints?: RoutePoint[];
+  userLocation?: { lat: number; lng: number; accuracy?: number } | null;
+  gpsActive?: boolean;
+  followUser?: boolean;
 }) {
   const { busesPayloads, locationsPayloads } = useLiveBusesLocations();
   const [busesById, setBusesById] = useState<Map<string, LiveBus>>(new Map());
@@ -112,7 +161,7 @@ export function BusMapLeaflet({
     }
   }, [locationsPayloads]);
 
-  const liveLocations = useMemo(() => {
+  const liveLocations = useMemo<LiveLocation[]>(() => {
     return Array.from(locationsById.values()).filter(
       (l) => typeof l.latitude === "number" && typeof l.longitude === "number"
     );
@@ -128,18 +177,60 @@ export function BusMapLeaflet({
       b.lng + Math.cos((tick + b.lng * 100) / 2) * d,
     ];
   };
-  const activePath: [number, number][] = hasLiveData
-    ? [...liveLocations.map((l) => [l.latitude as number, l.longitude as number]), [CAMPUS.lat, CAMPUS.lng]]
-    : [...buses.filter((b) => b.status === "active").map((b) => staticDrift(b)), [CAMPUS.lat, CAMPUS.lng]];
+
+  const userPosition = useMemo<[number, number] | null>(() => {
+    return userLocation ? [userLocation.lat, userLocation.lng] : null;
+  }, [userLocation]);
+  const userAccuracy = userLocation?.accuracy;
+  const userIcon = useMemo(() => makeUserIcon(), []);
+
+  // State for routed path from user to campus
+  const [userRoute, setUserRoute] = useState<[number, number][] | null>(null);
+  const [userRouteDistance, setUserRouteDistance] = useState<number | null>(null);
+
+  // Render accuracy circle if available
+  const accuracyCircle = userAccuracy && userPosition ? (
+    <Circle
+      center={userPosition}
+      radius={userAccuracy}
+      pathOptions={{ color: "#3B82F6", opacity: 0.2, fillOpacity: 0.1 }}
+    />
+  ) : null;
+
+  useEffect(() => {
+    if (!userPosition) {
+      setUserRoute(null);
+      setUserRouteDistance(null);
+      return;
+    }
+    // Async fetch route via GraphHopper
+    void (async () => {
+      const result = await getRoute({
+        fromLat: userPosition[0],
+        fromLng: userPosition[1],
+        toLat: CAMPUS.lat,
+        toLng: CAMPUS.lng,
+        vehicle: "car",
+      });
+      if (result) {
+        setUserRoute(result.points.map(p => [p.lat, p.lng]));
+        setUserRouteDistance(result.distance);
+      } else {
+        setUserRoute(null);
+        setUserRouteDistance(null);
+      }
+    })();
+  }, [userPosition]);
+
 
   return (
     <MapContainer
-      center={[31.6340, 74.8723]}
+      center={[CAMPUS.lat, CAMPUS.lng]}
       zoom={12}
       scrollWheelZoom
       zoomControl
       className="h-full w-full"
-      style={{ background: "var(--background)" }}
+      style={{ background: "var(--background)", height: "100%", minHeight: "400px", width: "100%" }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -147,10 +238,15 @@ export function BusMapLeaflet({
         errorTileUrl="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 256 256'%3E%3Crect width='256' height='256' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23999'%3EMap%3C/text%3E%3C/svg%3E"
       />
 
+      {/* Auto-recenter on user location when followUser is active */}
+      {userPosition && gpsActive && (
+        <MapUpdater center={userPosition} zoom={15} gpsActive={gpsActive} followUser={followUser} />
+      )}
+
       <Marker position={[CAMPUS.lat, CAMPUS.lng]} icon={campusIcon()}>
         <Popup>
-          <div style={{ fontFamily: "Poppins,system-ui", fontWeight: 700 }}>Global Group of Institutes</div>
-          <div style={{ color: "#6B7280", fontSize: 12 }}>Amritsar Campus</div>
+          <div style={{ fontFamily: "Poppins,system-ui", fontWeight: 700 }}>11th Km Stone, Amritsar - Jammu Highway</div>
+          <div style={{ color: "#6B7280", fontSize: 12 }}>NH 54, Amritsar, Punjab 143501</div>
         </Popup>
       </Marker>
       <CircleMarker
@@ -159,10 +255,74 @@ export function BusMapLeaflet({
         pathOptions={{ color: "#1E3A8A", weight: 1, fillColor: "#1E3A8A", fillOpacity: 0.08 }}
       />
 
-      <Polyline
-        positions={activePath}
-        pathOptions={{ color: "#1E3A8A", weight: 3, opacity: 0.85, dashArray: "8 8" }}
-      />
+
+
+      {/* GraphHopper Route (Styled like premium navigation path) */}
+      {routePoints && routePoints.length > 0 && (
+        <>
+          <Polyline
+            positions={routePoints.map((p) => [p.lat, p.lng])}
+            pathOptions={{ color: "#3B82F6", weight: 6, opacity: 0.95, lineCap: "round", lineJoin: "round" }}
+          />
+          <Polyline
+            positions={routePoints.map((p) => [p.lat, p.lng])}
+            pathOptions={{ color: "#93C5FD", weight: 2, opacity: 0.8, dashArray: "6 12", lineCap: "round" }}
+          />
+        </>
+      )}
+
+      {/* Live Device User Marker */}
+      {userPosition && (
+        <>
+          <CircleMarker
+            center={userPosition}
+            radius={12}
+            pathOptions={{
+              color: "#ffffff",
+              weight: 3,
+              fillColor: "#3B82F6",
+              fillOpacity: 1,
+            }}
+          />
+          <Marker position={userPosition} icon={userIcon} zIndexOffset={1000}>
+            <Popup>
+              <div style={{ fontFamily: "Poppins,system-ui", fontWeight: 700 }}>Your Location</div>
+              <div style={{ color: "#6B7280", fontSize: 12 }}>
+                {userAccuracy ? `Accuracy: ±${Math.round(userAccuracy)} m` : "Live GPS from your device"}
+              </div>
+            </Popup>
+          </Marker>
+          {accuracyCircle}
+
+          {/* Render routed path from user to campus */}
+          {userRoute && (
+            <Polyline
+              positions={userRoute}
+              pathOptions={{ color: "#3B82F6", weight: 5, dashArray: undefined }}
+            />
+          )}
+
+          {/* Distance label at midpoint of routed path */}
+          {userRouteDistance !== null && userRoute && (
+            (() => {
+              // Find midpoint of the route (approximate by middle index)
+              const midIdx = Math.floor(userRoute.length / 2);
+              const midPoint = userRoute[midIdx];
+              const km = (userRouteDistance / 1000).toFixed(2);
+              return (
+                <Marker
+                  position={midPoint}
+                  icon={L.divIcon({
+                    className: "distance-label",
+                    html: `<div style="background:#3B82F6;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;">${km} km</div>`,
+                    iconSize: [0, 0],
+                  })}
+                />
+              );
+            })()
+          )}
+        </>
+      )}
 
       {/* Live buses from Supabase */}
       {liveLocations.map((loc) => {
@@ -191,28 +351,7 @@ export function BusMapLeaflet({
       })}
 
       {/* Fallback to static buses */}
-      {!hasLiveData &&
-        buses.map((b) => {
-          const pos = staticDrift(b);
-          const selected = selectedId === b.id;
-          return (
-            <Marker
-              key={b.id}
-              position={pos}
-              icon={makeBusIcon(statusColor[b.status], selected)}
-              eventHandlers={{ click: () => onSelect?.(b.id) }}
-            >
-              <Popup>
-                <div style={{ fontFamily: "Poppins,system-ui", fontWeight: 700 }}>{b.id} · {b.name}</div>
-                <div style={{ color: "#6B7280", fontSize: 12 }}>{b.route}</div>
-                <div style={{ marginTop: 6, fontSize: 12 }}>
-                  ETA <b>{b.eta}</b> · {b.speed} km/h
-                </div>
-                <div style={{ fontSize: 12, color: "#6B7280" }}>Next: {b.nextStop}</div>
-              </Popup>
-            </Marker>
-          );
-        })}
+      
     </MapContainer>
   );
 }
