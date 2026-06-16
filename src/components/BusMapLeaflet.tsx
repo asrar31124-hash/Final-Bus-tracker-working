@@ -351,7 +351,28 @@ export function BusMapLeaflet({
       })}
 
       {/* Fallback to static buses */}
-      
+      {!hasLiveData &&
+        buses.map((b) => {
+          const pos = staticDrift(b);
+          const selected = selectedId === b.id;
+          return (
+            <Marker
+              key={b.id}
+              position={pos}
+              icon={makeBusIcon(statusColor[b.status], selected)}
+              eventHandlers={{ click: () => onSelect?.(b.id) }}
+            >
+              <Popup>
+                <div style={{ fontFamily: "Poppins,system-ui", fontWeight: 700 }}>{b.id} · {b.name}</div>
+                <div style={{ color: "#6B7280", fontSize: 12 }}>{b.route}</div>
+                <div style={{ marginTop: 6, fontSize: 12 }}>
+                  ETA <b>{b.eta}</b> · {b.speed} km/h
+                </div>
+                <div style={{ fontSize: 12, color: "#6B7280" }}>Next: {b.nextStop}</div>
+              </Popup>
+            </Marker>
+          );
+        })}
     </MapContainer>
   );
 }

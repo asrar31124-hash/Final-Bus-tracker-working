@@ -21,7 +21,7 @@ export const Route = createFileRoute("/track")({
 });
 
 function TrackPage() {
-  const [selected, setSelected] = useState<string>("");
+  const [selected, setSelected] = useState<string>("GGI-01");
   const [query, setQuery] = useState("");
   const [route, setRoute] = useState<RouteResult | null>(null);
   // Fallback bus when no static buses are available
@@ -193,10 +193,8 @@ function TrackPage() {
     toast.info("GPS tracking disabled.");
   };
 
-  // Auto-start GPS when the track page loads (client only)
+  // Don't auto-start GPS, let user trigger it manually
   useEffect(() => {
-    if (typeof window === "undefined" || !("geolocation" in navigator)) return;
-    startGpsTracking();
     return () => stopWatch();
   }, []);
 

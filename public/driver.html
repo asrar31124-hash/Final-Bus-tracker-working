@@ -221,7 +221,7 @@
 
         <div class="bus-id-section">
             <label for="busId">Bus ID</label>
-            <input type="text" id="busId" value="GGI-02" placeholder="Enter your Bus ID">
+            <input type="text" id="busId" value="GGI-01" placeholder="Enter your Bus ID">
         </div>
 
         <div class="status-card">
@@ -266,7 +266,7 @@
     <script>
         let watchId = null;
         let lastSentAt = 0;
-        const WEBHOOK_URL = "https://sanju314s.app.n8n.cloud/webhook-test/bus-location";
+        const WEBHOOK_URL = "https://sanju314s.app.n8n.cloud/webhook/bus-location";
 
         function log(message) {
             const time = new Date().toLocaleTimeString();
@@ -274,6 +274,7 @@
             const p = document.createElement('p');
             p.textContent = `[${time}] ${message}`;
             logList.prepend(p);
+            console.log(message);
         }
 
         function updateStatus(status) {
@@ -289,9 +290,9 @@
                 stopBtn.style.display = 'block';
             } else {
                 statusDot.classList.remove('active');
-                statusText.textContent = 'Tracking Stopped';
-                startBtn.style.display = 'block';
-                stopBtn.style.display = 'none';
+                statusText.textContent = status === 'idle' ? 'Tracking Stopped' : 'Acquiring Location...';
+                startBtn.style.display = status === 'idle' ? 'block' : 'none';
+                stopBtn.style.display = status !== 'idle' ? 'block' : 'none';
             }
         }
 
@@ -304,6 +305,7 @@
 
         async function sendLocation(data) {
             try {
+                log('Sending location to server...');
                 const response = await fetch(WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -311,12 +313,12 @@
                 });
 
                 if (response.ok) {
-                    log(`Location sent successfully`);
+                    log(`✅ Location sent successfully`);
                 } else {
-                    log(`Error: ${response.status} ${response.statusText}`);
+                    log(`❌ Server error: ${response.status} ${response.statusText}`);
                 }
             } catch (err) {
-                log(`Error sending location: ${err.message}`);
+                log(`❌ Network error: ${err.message}`);
             }
         }
 
@@ -332,39 +334,67 @@
                 return;
             }
 
-            log('Starting tracking...');
-            updateStatus('tracking');
+            log('🚀 Starting tracking...');
+            updateStatus('acquiring');
 
+            // First try high accuracy, then fall back if needed
+            tryHighAccuracy(busId);
+        }
+
+        function tryHighAccuracy(busId) {
+            log('Trying high accuracy GPS...');
             watchId = navigator.geolocation.watchPosition(
-                async (position) => {
-                    const now = Date.now();
-                    const throttleMs = 5000;
-                    if (now - lastSentAt < throttleMs) return;
-
-                    const data = {
-                        bus_id: busId,
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        speed: position.coords.speed,
-                        timestamp: new Date().toISOString()
-                    };
-
-                    updateDisplay(data);
-                    log(`GPS Update: ${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)}`);
-                    
-                    await sendLocation(data);
-                    lastSentAt = Date.now();
-                },
+                (position) => handlePosition(position, busId),
                 (err) => {
-                    log(`GPS Error: ${err.message}`);
-                    console.error(err);
+                    log(`⚠️ High accuracy failed: ${err.message} - trying low accuracy...`);
+                    tryLowAccuracy(busId);
                 },
                 {
                     enableHighAccuracy: true,
-                    maximumAge: 10000,
-                    timeout: 5000
+                    maximumAge: 5000,
+                    timeout: 15000
                 }
             );
+        }
+
+        function tryLowAccuracy(busId) {
+            log('Trying network location (low accuracy)...');
+            watchId = navigator.geolocation.watchPosition(
+                (position) => handlePosition(position, busId),
+                (err) => {
+                    log(`❌ GPS error: ${err.code} - ${err.message}`);
+                    alert(`Could not get location: ${err.message}. Please enable location services.`);
+                    stopTracking();
+                },
+                {
+                    enableHighAccuracy: false,
+                    maximumAge: 30000,
+                    timeout: 20000
+                }
+            );
+        }
+
+        function handlePosition(position, busId) {
+            updateStatus('tracking');
+            const now = Date.now();
+            const throttleMs = 5000;
+
+            const data = {
+                bus_id: busId,
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                speed: position.coords.speed,
+                accuracy: position.coords.accuracy,
+                timestamp: new Date().toISOString()
+            };
+
+            updateDisplay(data);
+            log(`📍 GPS Update: ${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)} (Accuracy: ${Math.round(data.accuracy)}m)`);
+            
+            if (now - lastSentAt >= throttleMs) {
+                sendLocation(data);
+                lastSentAt = Date.now();
+            }
         }
 
         function stopTracking() {
@@ -372,7 +402,7 @@
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
             }
-            log('Tracking stopped');
+            log('⏹️ Tracking stopped');
             updateStatus('idle');
         }
     </script>
