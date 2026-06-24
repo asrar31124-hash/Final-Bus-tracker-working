@@ -8,6 +8,7 @@ import { RoutePlanner } from "@/components/RoutePlanner";
 import { getRoute } from "@/lib/graphhopper";
 import type { RouteResult } from "@/lib/graphhopper";
 import { useLiveBusesLocations } from "@/lib/realtime/useLiveBusesLocations";
+import { useApiBusLocations } from "@/lib/realtime/useApiBusLocations";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/track")({
@@ -61,6 +62,7 @@ function TrackPage() {
 
   // Realtime locations integration
   const { locationsPayloads } = useLiveBusesLocations();
+  const apiLocations = useApiBusLocations();
 
   const filtered = buses.filter(
     (b) => b.id.toLowerCase().includes(query.toLowerCase()) || b.route.toLowerCase().includes(query.toLowerCase()),
@@ -70,6 +72,15 @@ function TrackPage() {
 
   // Resolve selected bus's live coordinates
   const liveLoc = useMemo(() => {
+    const apiLoc = apiLocations.find((l) => l.bus_id === selected);
+    if (apiLoc) {
+      return {
+        latitude: apiLoc.latitude,
+        longitude: apiLoc.longitude,
+        speed: apiLoc.speed,
+      };
+    }
+
     const latest = new Map<string, { latitude: number; longitude: number; speed: number | null }>();
     for (const payload of locationsPayloads) {
       const maybeNew = payload?.record ?? payload?.new ?? payload?.data ?? payload?.payload?.new;
@@ -85,7 +96,7 @@ function TrackPage() {
       }
     }
     return latest.get(selected);
-  }, [locationsPayloads, selected]);
+  }, [locationsPayloads, selected, apiLocations]);
 
   const busLat = liveLoc?.latitude ?? active.lat;
   const busLng = liveLoc?.longitude ?? active.lng;

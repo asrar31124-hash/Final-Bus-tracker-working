@@ -1,6 +1,6 @@
 @import "tailwindcss" source(none);
-@source "../src";
 @import "tw-animate-css";
+@source "../src";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -68,6 +68,7 @@
   --color-danger-foreground: var(--danger-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --animate-spotlight: spotlight 2s ease 0.75s 1 normal forwards;
 }
 
 :root {
@@ -223,3 +224,30 @@
   to { stroke-dashoffset: -200; }
 }
 .route-dash { stroke-dasharray: 8 8; animation: dash 6s linear infinite; }
+
+@keyframes spotlight {
+  0% {
+    opacity: 0;
+    transform: translate(-72%, -62%) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -40%) scale(1);
+  }
+}
+
+.loader {
+  width: 48px;
+  height: 48px;
+  border: 5px solid var(--color-brand-soft);
+  border-bottom-color: var(--color-brand);
+  border-radius: 50%;
+  display: inline-block;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

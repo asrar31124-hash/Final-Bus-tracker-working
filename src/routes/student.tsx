@@ -1,8 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Bus, Clock, MapPin, Bell, Heart, QrCode, Star } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
+import { Bus, Clock, MapPin, Bell, Heart, QrCode, Star, Radio } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { BusMap } from "@/components/BusMap";
 import { buses, notifications } from "@/lib/bus-data";
+import { fetchBusLocation, type BusLocationRecord } from "@/lib/bus-location-api";
 
 export const Route = createFileRoute("/student")({
   head: () => ({ meta: [{ title: "Student Dashboard · GGI Transit" }] }),
@@ -11,6 +13,25 @@ export const Route = createFileRoute("/student")({
 
 function StudentPage() {
   const myBus = buses[1];
+  const [liveLocation, setLiveLocation] = useState<BusLocationRecord | null>(null);
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    const poll = async () => {
+      const loc = await fetchBusLocation(myBus.id);
+      setLiveLocation(loc);
+      setIsLive(loc != null && loc.is_tracking);
+    };
+
+    void poll();
+    const interval = setInterval(() => void poll(), 3000);
+    return () => clearInterval(interval);
+  }, [myBus.id]);
+
+  const speedDisplay = liveLocation?.speed
+    ? `${Math.round(liveLocation.speed * 3.6)} km/h`
+    : `${myBus.speed} km/h`;
+
   return (
     <DashboardShell title="Hi, Aditi 👋" subtitle="Your daily commute, at a glance">
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
@@ -18,24 +39,60 @@ function StudentPage() {
           <div className="overflow-hidden rounded-3xl border bg-card shadow-soft">
             <div className="grid lg:grid-cols-[1fr_1.2fr]">
               <div className="bg-gradient-brand p-6 text-white">
-                <div className="text-xs uppercase tracking-widest text-white/70">Your bus</div>
-                <div className="mt-1 font-display text-2xl font-extrabold">{myBus.id} · {myBus.name}</div>
+                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-white/70">
+                  {isLive ? (
+                    <>
+                      <Radio className="h-3.5 w-3.5 animate-pulse" /> Live tracking
+                    </>
+                  ) : (
+                    "Your bus"
+                  )}
+                </div>
+                <div className="mt-1 font-display text-2xl font-extrabold">
+                  {myBus.id} · {myBus.name}
+                </div>
                 <div className="mt-1 text-sm text-white/80">{myBus.route}</div>
                 <div className="mt-6 flex items-end gap-3">
-                  <div className="font-display text-5xl font-extrabold leading-none">{myBus.eta.split(" ")[0]}</div>
-                  <div className="pb-1 text-sm text-white/80">{myBus.eta.split(" ")[1] ?? ""} to Gate 3</div>
+                  <div className="font-display text-5xl font-extrabold leading-none">
+                    {isLive ? "Live" : myBus.eta.split(" ")[0]}
+                  </div>
+                  <div className="pb-1 text-sm text-white/80">
+                    {isLive
+                      ? `Updated ${liveLocation ? new Date(liveLocation.updated_at).toLocaleTimeString() : ""}`
+                      : `${myBus.eta.split(" ")[1] ?? ""} to Gate 3`}
+                  </div>
                 </div>
                 <div className="mt-6 flex items-center gap-3 text-xs text-white/80">
-                  <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> Next: {myBus.nextStop}</span>
-                  <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> 38 km/h</span>
+                  <span className="flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5" /> Next: {myBus.nextStop}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" /> {speedDisplay}
+                  </span>
                 </div>
-                <button className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-brand shadow-soft">
+                <Link
+                  to="/track"
+                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-brand shadow-soft"
+                >
                   <MapPin className="h-4 w-4" /> Track on map
-                </button>
+                </Link>
+                <a
+                  href="/student.html"
+                  className="mt-3 ml-2 inline-flex items-center gap-2 rounded-full border border-white/40 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Simple tracker
+                </a>
               </div>
-              <BusMap className="h-full min-h-[280px] rounded-none border-0 lg:border-l" />
+              <BusMap className="h-full min-h-[280px] rounded-none border-0 lg:border-l" selectedId={myBus.id} />
             </div>
           </div>
+
+          {!isLive && (
+            <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">
+              Driver has not started tracking yet. You'll see live updates here once they tap{" "}
+              <strong>Start tracking</strong> on the driver app.
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-3">
             <SmallCard icon={Bus} label="Trips this week" value="12" />
@@ -52,7 +109,9 @@ function StudentPage() {
               {buses.slice(0, 4).map((b) => (
                 <div key={b.id} className="flex items-center justify-between rounded-xl border bg-background p-3">
                   <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-soft text-brand"><Bus className="h-4 w-4" /></div>
+                    <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-soft text-brand">
+                      <Bus className="h-4 w-4" />
+                    </div>
                     <div>
                       <div className="text-sm font-semibold">{b.id}</div>
                       <div className="text-xs text-muted-foreground">{b.route}</div>
@@ -60,7 +119,9 @@ function StudentPage() {
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold">{b.eta}</div>
-                    <button className="text-[11px] text-danger"><Heart className="inline h-3 w-3 fill-current" /> Saved</button>
+                    <button className="text-[11px] text-danger">
+                      <Heart className="inline h-3 w-3 fill-current" /> Saved
+                    </button>
                   </div>
                 </div>
               ))}
@@ -98,7 +159,15 @@ function StudentPage() {
   );
 }
 
-function SmallCard({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+function SmallCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="rounded-2xl border bg-card p-5 shadow-soft">
       <Icon className="h-5 w-5 text-brand" />

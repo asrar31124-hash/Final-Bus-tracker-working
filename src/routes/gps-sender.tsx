@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
 import { Play, Square, MapPin, Navigation, AlertCircle } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
+import { sendBusLocation, stopBusLocationTracking } from "@/lib/bus-location-api";
 
 export const Route = createFileRoute("/gps-sender")({
   head: () => ({ meta: [{ title: "GPS Sender | GGI Transit" }] }),
@@ -46,18 +47,7 @@ function GPSSenderPage() {
           timestamp: position.timestamp,
         });
 
-        try {
-          await fetch("https://sanju314s.app.n8n.cloud/webhook-test/bus-location", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(locationData),
-          });
-        } catch (error) {
-          console.error("Error sending location:", error);
-          // Don't stop tracking on network errors, just log
-        }
+        await sendBusLocation(locationData);
       },
       (error) => {
         setStatus("error");
@@ -77,6 +67,7 @@ function GPSSenderPage() {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    void stopBusLocationTracking(busId);
     setTracking(false);
     setStatus("idle");
   };
@@ -188,7 +179,7 @@ function GPSSenderPage() {
           <div>
             <div className="font-medium text-brand">Note</div>
             <div className="text-sm text-muted-foreground">
-              Location data is sent to https://sanju314s.app.n8n.cloud/webhook-test/bus-location
+              Location is shared with students via the live tracking API when you start tracking.
             </div>
           </div>
         </div>

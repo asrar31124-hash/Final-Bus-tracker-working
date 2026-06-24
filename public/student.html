@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GGI Bus Tracker — Student</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f1f5f9;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        header h1 { font-size: 20px; font-weight: 800; }
+        header nav { display: flex; gap: 12px; }
+        header nav a { color: rgba(255,255,255,0.9); font-size: 13px; font-weight: 600; text-decoration: none; }
+        header nav a:hover { text-decoration: underline; }
+        .controls {
+            background: white;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+        .controls label { font-size: 14px; font-weight: 600; color: #334155; }
+        .controls input, .controls select {
+            padding: 10px 14px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+            min-width: 140px;
+        }
+        .controls button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .status-bar {
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-bar.waiting { background: #fef3c7; color: #92400e; }
+        .status-bar.live { background: #d1fae5; color: #065f46; }
+        .status-bar.offline { background: #fee2e2; color: #991b1b; }
+        .status-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: currentColor;
+        }
+        .status-bar.live .status-dot { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        #map { flex: 1; min-height: 400px; }
+        .info-panel {
+            background: white;
+            padding: 16px 20px;
+            border-top: 1px solid #e2e8f0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+        }
+        .info-item label {
+            display: block;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .info-item .value { font-size: 16px; font-weight: 700; color: #1e293b; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎓 Student Bus Tracker</h1>
+        <nav>
+            <a href="/driver.html">Driver app</a>
+            <a href="/track">Full map</a>
+            <a href="/">Home</a>
+        </nav>
+    </header>
+
+    <div class="controls">
+        <label for="busId">Track bus:</label>
+        <select id="busId">
+            <option value="GGI-01">GGI-01 — Express A1</option>
+            <option value="GGI-02">GGI-02 — Shuttle B2</option>
+            <option value="GGI-03">GGI-03 — Local C3</option>
+            <option value="GGI-04">GGI-04 — Night D4</option>
+        </select>
+        <button onclick="startTracking()">Refresh / Track</button>
+    </div>
+
+    <div class="status-bar waiting" id="statusBar">
+        <span class="status-dot"></span>
+        <span id="statusText">Waiting for driver to start tracking...</span>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="info-panel">
+        <div class="info-item">
+            <label>Bus ID</label>
+            <div class="value" id="infoBusId">—</div>
+        </div>
+        <div class="info-item">
+            <label>Speed</label>
+            <div class="value" id="infoSpeed">—</div>
+        </div>
+        <div class="info-item">
+            <label>Last update</label>
+            <div class="value" id="infoUpdated">—</div>
+        </div>
+        <div class="info-item">
+            <label>Coordinates</label>
+            <div class="value" id="infoCoords" style="font-size:12px;font-family:monospace">—</div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_URL = '/api/bus-location';
+        const CAMPUS = { lat: 31.691001, lng: 74.971840, name: 'GGI Campus' };
+        let pollInterval = null;
+        let busMarker = null;
+        let map = null;
+
+        function initMap() {
+            map = L.map('map').setView([CAMPUS.lat, CAMPUS.lng], 12);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO'
+            }).addTo(map);
+
+            L.marker([CAMPUS.lat, CAMPUS.lng])
+                .addTo(map)
+                .bindPopup('<b>GGI Campus</b><br>Amritsar');
+        }
+
+        function busIcon() {
+            return L.divIcon({
+                className: 'bus-marker',
+                iconSize: [40, 40],
+                iconAnchor: [20, 20],
+                html: `<div style="width:40px;height:40px;border-radius:50%;background:#10b981;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.3);display:grid;place-items:center;font-size:20px">🚌</div>`
+            });
+        }
+
+        function setStatus(type, text) {
+            const bar = document.getElementById('statusBar');
+            bar.className = 'status-bar ' + type;
+            document.getElementById('statusText').textContent = text;
+        }
+
+        function updateInfo(loc) {
+            document.getElementById('infoBusId').textContent = loc.bus_id;
+            document.getElementById('infoSpeed').textContent = loc.speed
+                ? `${Math.round(loc.speed * 3.6)} km/h`
+                : '—';
+            document.getElementById('infoUpdated').textContent = new Date(loc.updated_at).toLocaleTimeString();
+            document.getElementById('infoCoords').textContent =
+                `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
+        }
+
+        async function fetchLocation() {
+            const busId = document.getElementById('busId').value;
+            try {
+                const res = await fetch(`${API_URL}?bus_id=${encodeURIComponent(busId)}`);
+                if (!res.ok) {
+                    setStatus('waiting', `Bus ${busId} is not tracking yet. Ask the driver to start.`);
+                    if (busMarker) {
+                        map.removeLayer(busMarker);
+                        busMarker = null;
+                    }
+                    return;
+                }
+                const loc = await res.json();
+                setStatus('live', `Live tracking ${loc.bus_id} — updated ${new Date(loc.updated_at).toLocaleTimeString()}`);
+                updateInfo(loc);
+
+                const pos = [loc.latitude, loc.longitude];
+                if (!busMarker) {
+                    busMarker = L.marker(pos, { icon: busIcon() }).addTo(map);
+                } else {
+                    busMarker.setLatLng(pos);
+                }
+                busMarker.bindPopup(`<b>${loc.bus_id}</b><br>Speed: ${loc.speed ? Math.round(loc.speed * 3.6) + ' km/h' : '—'}`);
+                map.setView(pos, 14);
+            } catch (err) {
+                setStatus('offline', 'Could not reach server. Check your connection.');
+            }
+        }
+
+        function startTracking() {
+            if (pollInterval) clearInterval(pollInterval);
+            fetchLocation();
+            pollInterval = setInterval(fetchLocation, 3000);
+        }
+
+        initMap();
+        startTracking();
+    </script>
+</body>
+</html>

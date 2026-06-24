@@ -4,6 +4,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { buses, CAMPUS, type Bus } from "@/lib/bus-data";
 import { useLiveBusesLocations } from "@/lib/realtime/useLiveBusesLocations";
+import { useApiBusLocations } from "@/lib/realtime/useApiBusLocations";
 import { useMemo, useEffect, useState } from "react";
 // Removed duplicate import of RoutePoint
 import { useMap, MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker, Polyline } from "react-leaflet";
@@ -108,6 +109,7 @@ export function BusMapLeaflet({
   followUser?: boolean;
 }) {
   const { busesPayloads, locationsPayloads } = useLiveBusesLocations();
+  const apiLocations = useApiBusLocations();
   const [busesById, setBusesById] = useState<Map<string, LiveBus>>(new Map());
   const [locationsById, setLocationsById] = useState<Map<string, LiveLocation>>(new Map());
 
@@ -162,10 +164,21 @@ export function BusMapLeaflet({
   }, [locationsPayloads]);
 
   const liveLocations = useMemo<LiveLocation[]>(() => {
-    return Array.from(locationsById.values()).filter(
-      (l) => typeof l.latitude === "number" && typeof l.longitude === "number"
+    const fromRealtime = Array.from(locationsById.values()).filter(
+      (l) => typeof l.latitude === "number" && typeof l.longitude === "number",
     );
-  }, [locationsById]);
+
+    if (fromRealtime.length > 0) return fromRealtime;
+
+    return apiLocations.map((loc, index) => ({
+      id: `api-${loc.bus_id}-${index}`,
+      bus_id: loc.bus_id,
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      speed: loc.speed,
+      created_at: loc.updated_at,
+    }));
+  }, [locationsById, apiLocations]);
 
   // Fallback to static data if no live data
   const hasLiveData = liveLocations.length > 0 || busesById.size > 0;

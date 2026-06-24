@@ -1,13 +1,13 @@
 import { useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient"; // <-- your existing supabase client
+import { supabase } from "@/lib/supabase";
 
-/** Pushes the device’s location to Supabase every time it changes. */
+/** Pushes the device's location to Supabase every time it changes. */
 export function useUserLocation(
   watch: boolean,
-  onError?: (e: GeolocationPositionError) => void
+  onError?: (e: GeolocationPositionError) => void,
 ) {
   useEffect(() => {
-    if (!watch) return;
+    if (!watch || !supabase) return;
 
     const id = navigator.geolocation.watchPosition(
       async (pos) => {
@@ -25,10 +25,9 @@ export function useUserLocation(
         enableHighAccuracy: true,
         maximumAge: 0,
         timeout: 10000,
-      }
+      },
     );
 
-    // cleanup on unmount or when watch is turned off
     return () => navigator.geolocation.clearWatch(id);
   }, [watch, onError]);
 }

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { BusMap } from "@/components/BusMap";
 import { stats } from "@/lib/bus-data";
+import { SplineSceneBasic } from "@/components/ui/demo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -33,6 +34,9 @@ function Landing() {
       <Navbar />
       <Hero />
       <Marquee />
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <SplineSceneBasic />
+      </div>
       <Features />
       <LivePreview />
       <StatsSection />
@@ -63,12 +67,18 @@ function Navbar() {
             <Link to="/admin" className="hover:text-foreground">For Admins</Link>
           </nav>
           <div className="flex items-center gap-2">
-            <Link
-              to="/student"
+            <a
+              href="/driver.html"
               className="hidden rounded-full border bg-card px-4 py-2 text-sm font-semibold shadow-soft transition hover:border-brand hover:text-brand sm:inline-flex"
             >
-              Login
-            </Link>
+              Driver
+            </a>
+            <a
+              href="/student.html"
+              className="hidden rounded-full border bg-card px-4 py-2 text-sm font-semibold shadow-soft transition hover:border-brand hover:text-brand sm:inline-flex"
+            >
+              Student
+            </a>
             <Link
               to="/track"
               className="inline-flex items-center gap-1.5 rounded-full bg-gradient-brand px-4 py-2 text-sm font-semibold text-white shadow-glow transition hover:brightness-110"
